@@ -1,0 +1,20 @@
+%fib
+lcopy 2
+ladd
+rpush 1
+rsub
+rpush 0
+rjne %fib
+ret
+
+%entry
+rpush 10
+call %fib
+rpush 10
+$loop
+lprintnum
+rpush 1
+rsub
+rpush 0
+rjne $loop
+ret
