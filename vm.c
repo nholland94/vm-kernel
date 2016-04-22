@@ -27,19 +27,6 @@ typedef struct virtual_machine {
   stack right_stack;
 } virtual_machine;
 
-// typedef struct program_header {
-//   uint8_t system_module_dependency_count;
-//   char **system_module_dependencies;
-//   uint8_t library_dependency_count;
-//   char **library_dependencies[2];
-// } program_header;
-
-typedef struct program {
-//   program_header *header;
-  size_t code_length;
-  void *code;
-} program;
-
 const char *virtual_machine_error_message(virtual_machine_error error) {
   return "TODO (YOU LAZY BASTARD)";
 }
@@ -56,12 +43,8 @@ value stack_pop(stack *s) {
 }
 
 value_pair stack_pop_pair(stack *s) {
-  value_pair values;
-  values.a = *(s->top);
-  s->top -= sizeof(value);
-  values.b = *(s->top);
-  s->top -= sizeof(value);
-  return values;
+  s->top -= sizeof(value_pair);
+  return *(value_pair *)(s->top);
 }
 
 void stack_copy(stack *s, value count) {
@@ -71,6 +54,10 @@ void stack_copy(stack *s, value count) {
     s->top += sizeof(value);
     *(s->top) = *origin;
   }
+}
+
+int stack_count(stack *s) {
+  return (s->top - s->bottom) / sizeof(value);
 }
 
 virtual_machine *create_virtual_machine() {
@@ -108,7 +95,6 @@ void cleanup_virtual_machine(virtual_machine *vm) {
   kfree(vm);
 }
 
-
 ptrdiff_t program_symbol_offset(program *p, char *symbol) {
 }
 
@@ -132,13 +118,24 @@ void run_virtual_machine(virtual_machine *vm, program *p) {
   value arg;
   value_pair values;
 
-  opcode *code_ptr = p->code + program_symbol_offset(p, "entry");
+  opcode *code_ptr = p->code + program_symbol_offset(p, program_symbol_id(p, "entry"));
 
+  // TODO check bounds
   for(;;) {
     switch(*code_ptr) {
     case OP_CALL:
+      arg = *(uint32_t *)(code_ptr + sizeof(opcode));
+      stack_push(&vm->call_stack, code_ptr - p->code);
+      code_ptr = p->code + program_symbol_offset(p, arg);
+
     case OP_RET:
+      code_ptr = p->code + stack_pop(&vm->call_stack);
+
     case OP_JMP:
+      arg = *(uint32_t *)(code_ptr + sizeof(opcode)); 
+      code_ptr = p->code + arg;
+      // TODO check bounds
+
     case OP_LPUSH:
       arg = *(uint32_t *)(code_ptr + sizeof(opcode)); 
       stack_push(&vm->left_stack, arg);
@@ -220,15 +217,86 @@ void run_virtual_machine(virtual_machine *vm, program *p) {
       }
 
     case OP_RPUSH:
+      arg = *(uint32_t *)(code_ptr + sizeof(opcode)); 
+      stack_push(&vm->right_stack, arg);
+      code_ptr += sizeof(opcode) + sizeof(uint32_t);
+
     case OP_RCOPY:
+      arg = *(uint32_t *)(code_ptr + sizeof(opcode)); 
+      stack_copy(&vm->right_stack, arg);
+      code_ptr += sizeof(opcode) + sizeof(uint32_t);
+
     case OP_RADD:
+      value_pair values = stack_pop_pair(&vm->right_stack);
+      stack_push(&vm->right_stack, values.a + values.b);
+      code_ptr += sizeof(opcode);
+
     case OP_RSUB:
+      value_pair values = stack_pop_pair(&vm->right_stack);
+      stack_push(&vm->right_stack, values.a - values.b);
+      code_ptr += sizeof(opcode);
+
     case OP_RJE:
+      arg = *(uint32_t *)(code_ptr + sizeof(opcode)); 
+      value_pair values = stack_pop_pair(&vm->right_stack);
+
+      if(values.a == values.b) {
+        code_ptr = p->code + arg;
+      } else {
+        code_ptr += sizeof(opcode) + sizeof(uint32_t);
+      }
+
     case OP_RJNE:
+      arg = *(uint32_t *)(code_ptr + sizeof(opcode)); 
+      value_pair values = stack_pop_pair(&vm->right_stack);
+
+      if(values.a != values.b) {
+        code_ptr = p->code + arg;
+      } else {
+        code_ptr += sizeof(opcode) + sizeof(uint32_t);
+      }
+
+
     case OP_RJL:
+      arg = *(uint32_t *)(code_ptr + sizeof(opcode)); 
+      value_pair values = stack_pop_pair(&vm->right_stack);
+
+      if(values.a < values.b) {
+        code_ptr = p->code + arg;
+      } else {
+        code_ptr += sizeof(opcode) + sizeof(uint32_t);
+      }
+
     case OP_RJG:
+      arg = *(uint32_t *)(code_ptr + sizeof(opcode)); 
+      value_pair values = stack_pop_pair(&vm->right_stack);
+
+      if(values.a > values.b) {
+        code_ptr = p->code + arg;
+      } else {
+        code_ptr += sizeof(opcode) + sizeof(uint32_t);
+      }
+
     case OP_RJLE:
+      arg = *(uint32_t *)(code_ptr + sizeof(opcode)); 
+      value_pair values = stack_pop_pair(&vm->right_stack);
+
+      if(values.a <= values.b) {
+        code_ptr = p->code + arg;
+      } else {
+        code_ptr += sizeof(opcode) + sizeof(uint32_t);
+      }
+
     case OP_RJGE:
+      arg = *(uint32_t *)(code_ptr + sizeof(opcode)); 
+      value_pair values = stack_pop_pair(&vm->right_stack);
+
+      if(values.a >= values.b) {
+        code_ptr = p->code + arg;
+      } else {
+        code_ptr += sizeof(opcode) + sizeof(uint32_t);
+      }
+
     default:
       kpanic("Unknown opcode read!!!");
     }

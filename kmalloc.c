@@ -5,24 +5,26 @@
 extern "C" void _K_HEAP_START_;
 extern "C" void _K_HEAP_END_;
 
-#define _K_HEAP_SIZE_ (_K_HEAP_END_ - _K_HEAP_START_)
+#define K_HEAP_START ((&_K_HEAP_START_))
+#define K_HEAP_END ((&_K_HEAP_END_))
+#define K_HEAP_SIZE ((K_HEAP_END - K_HEAP_START))
 
-struct free_zone {
+typedef free_zone {
   void *base_address;
-  struct free_zone *next_free_zone;
+  free_zone *next_free_zone;
   size_t zone_size;
-};
+} free_zone;
 
-struct free_zone *free_zone_top;
-struct free_zone *free_zone_bottom;
+static free_zone *free_zone_top;
+static free_zone *free_zone_bottom;
 
 void kmalloc_init() {
-  *(size_t *)(_K_HEAP_START_) = sizeof(struct free_zone);
-  struct free_zone *initial_free_zone = (struct free_zone *)(_K_HEAP_START_ + sizeof(size_t));
+  *(size_t *)(K_HEAP_START) = sizeof(free_zone);
+  free_zone *initial_free_zone = (free_zone *)(K_HEAP_START + sizeof(size_t));
 
-  initial_free_zone->base_address = initial_free_zone + sizeof(struct free_zone);
+  initial_free_zone->base_address = initial_free_zone + sizeof(free_zone);
   initial_free_zone->next_free_zone = NULL;
-  initial_free_zone->zone_size = _K_HEAP_SIZE_ - sizeof(struct free_zone);
+  initial_free_zone->zone_size = K_HEAP_SIZE - sizeof(free_zone);
 
   free_zone_top = initial_free_zone;
   free_zone_bottom = initial_free_zone;
@@ -31,8 +33,8 @@ void kmalloc_init() {
 void *kmalloc(size_t size) {
   void *k_heap_base;
   size_t required_size = size + sizeof(size_t);
-  struct free_zone *zone = free_zone_top;
-  struct free_zone *parent_zone = NULL;
+  free_zone *zone = free_zone_top;
+  free_zone *parent_zone = NULL;
 
   while(zone != NULL && !(zone->zone_size >= required_size)) {
     parent_zone = zone;
@@ -44,7 +46,7 @@ void *kmalloc(size_t size) {
   }
 
   if(zone->zone_size == required_size) {
-    struct free_zone *old_free_zone_top = zone;
+    free_zone *old_free_zone_top = zone;
     k_heap_base = old_free_zone_top->base_address;
 
     if(parent_zone != NULL) {
@@ -71,16 +73,16 @@ void kfree(void *ptr) {
   *size_ptr = 0;
 
   // Does not attempt to combine contiguous free_zones
-  struct free_zone *new_free_zone = (struct free_zone *)kmalloc(sizeof(struct free_zone));
+  free_zone *new_free_zone = (free_zone *)kmalloc(sizeof(free_zone));
   size_t zone_size = size + 1;
   if(new_free_zone == NULL) {
-    if(size < sizeof(struct free_zone)) {
+    if(size < sizeof(free_zone)) {
       kpanic("INTERNAL HEAP ERROR: cannot allocate free_zone in heap");
     } else {
-      *size_ptr = sizeof(struct free_zone);
+      *size_ptr = sizeof(free_zone);
       new_free_zone = ptr;
-      ptr += sizeof(struct free_zone);
-      zone_size -= sizeof(struct free_zone) + sizeof(size_t);
+      ptr += sizeof(free_zone);
+      zone_size -= sizeof(free_zone) + sizeof(size_t);
     }
   }
 
